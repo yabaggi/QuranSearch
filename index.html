@@ -1,0 +1,387 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Quran Search</title>
+    <meta name="theme-color" content="#4338ca">
+    <style>
+        body {
+            font-family: sans-serif;
+            background-color: #f0f4f8;
+            color: #333;
+            margin: 0;
+            padding: 2rem;
+        }
+        .container {
+            max-width: 800px;
+            margin: 0 auto;
+        }
+        .header {
+            text-align: center;
+            margin-bottom: 2rem;
+        }
+        h1 {
+            font-size: 2.5rem;
+            margin-bottom: 0.5rem;
+        }
+        .search-card, .result-card {
+            background-color: white;
+            border-radius: 8px;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+            margin-bottom: 1.5rem;
+            padding: 1.5rem;
+        }
+        .search-wrapper {
+            position: relative;
+            display: flex;
+            align-items: center;
+        }
+        .search-input {
+            width: 100%;
+            padding: 0.75rem 2.5rem 0.75rem 1rem; /* Add padding to the right for the button */
+            font-size: 1.1rem;
+            border: 1px solid #ddd;
+            border-radius: 6px;
+            box-sizing: border-box;
+            text-align: right;
+            direction: rtl;
+        }
+        .search-controls {
+            display: flex;
+            justify-content: flex-end;
+            gap: 10px;
+            margin-top: 10px;
+        }
+        .clear-button {
+            position: absolute;
+            right: 0.5rem;
+            top: 50%;
+            transform: translateY(-50%);
+            border: none;
+            background: #ddd;
+            color: #555;
+            border-radius: 50%;
+            width: 2rem;
+            height: 2rem;
+            font-size: 1.5rem;
+            line-height: 2rem;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+        .clear-button:hover {
+            background: #ccc;
+        }
+        .loader, .no-results {
+            text-align: center;
+            padding: 2rem;
+            color: #666;
+        }
+        .results-header {
+            font-size: 1.5rem;
+            font-weight: bold;
+            margin-bottom: 1rem;
+        }
+        .result-card-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: flex-start;
+            margin-bottom: 1rem;
+        }
+        .result-card-title {
+            font-weight: bold;
+            font-size: 1.2rem;
+        }
+        .result-card-subtitle {
+            color: #666;
+            font-size: 0.9rem;
+        }
+        .result-card-ayah-number {
+            background-color: #eef2ff;
+            color: #4338ca;
+            padding: 0.25rem 0.75rem;
+            border-radius: 9999px;
+            font-size: 0.9rem;
+            font-weight: 600;
+        }
+        .result-card-text {
+            text-align: right;
+            direction: rtl;
+            font-size: 1.25rem;
+            line-height: 1.8;
+        }
+        .recite-button {
+            background-color: #4338ca;
+            color: white;
+            border: none;
+            padding: 0.5rem 1rem;
+            border-radius: 6px;
+            cursor: pointer;
+            margin-top: 1rem;
+            font-size: 1rem;
+        }
+        .recite-button:hover {
+            background-color: #3730a3;
+        }
+    </style>
+</head>
+<body>
+
+    <div class="container">
+        <div class="header">
+            <h1>Quran Search</h1>
+            <p>Search for words in the Quran</p>
+        </div>
+
+        <div class="search-card">
+            <div class="search-wrapper">
+                <input type="text" id="searchInput" class="search-input" placeholder="اكتب الكلمة التي تبحث عنها" disabled>
+                <button id="clearButton" class="clear-button" style="display: none;">&times;</button>
+            </div>
+            <div class="search-controls">
+                <button id="autoButton">تلقائي: OFF</button>
+                <button id="searchButton">ابدأ البحث</button>
+            </div>
+        </div>
+
+        <div id="status">
+            <div class="loader">Loading Quran data...</div>
+        </div>
+
+        <div id="results"></div>
+    </div>
+
+    <script>
+        const searchInput = document.getElementById('searchInput');
+        const resultsContainer = document.getElementById('results');
+        const statusContainer = document.getElementById('status');
+        const clearButton = document.getElementById('clearButton');
+        const autoButton = document.getElementById('autoButton');
+        const searchButton = document.getElementById('searchButton');
+
+        let quranData = null;
+        let searchTimeout = null;
+        let isAutoSearchOn = false;
+        let currentAudio = null;
+
+        // Function to normalize Arabic text for searching
+        function normalizeArabic(text) {
+            // 1. Normalize all Alef-like forms to a plain Alef.
+            let normalizedText = text.replace(/[أإآٱٰ]/g, 'ا'); // Includes Dagger Alef
+
+            // 2. Normalize Ta Marbuta to Ha
+            normalizedText = normalizedText.replace(/ة/g, 'ه');
+
+            // 3. Normalize Alef Maqsura to Ya
+            normalizedText = normalizedText.replace(/ى/g, 'ي');
+
+            // 4. Now, remove all other diacritics and annotations.
+            // Hamza (U+0621) is treated as a diacritic.
+            const otherDiacritics = /[ؐ-ًؚ-ٟۖ-ۜ۟-۪ۨ-ۭـء]/g;
+            normalizedText = normalizedText.replace(otherDiacritics, '');
+
+            return normalizedText;
+        }
+
+        function clearSearch() {
+            searchInput.value = '';
+            resultsContainer.innerHTML = '';
+            clearButton.style.display = 'none';
+        }
+
+        function updateButtons() {
+            if (isAutoSearchOn) {
+                autoButton.textContent = 'تلقائي: ON';
+                searchButton.disabled = true;
+            } else {
+                autoButton.textContent = 'تلقائي: OFF';
+                searchButton.disabled = false;
+            }
+        }
+
+        // 1. Load Quran data
+        document.addEventListener('DOMContentLoaded', () => {
+            updateButtons();
+            fetch('quran.json')
+                .then(response => {
+                    if (!response.ok) {
+                        throw new Error('Network response was not ok');
+                    }
+                    return response.json();
+                })
+                .then(data => {
+                    quranData = data;
+                    searchInput.disabled = false;
+                    statusContainer.innerHTML = '';
+                })
+                .catch(error => {
+                    console.error('Error loading Quran data:', error);
+                    statusContainer.innerHTML = '<div class="no-results">Failed to load Quran data. Please try again later.</div>';
+                });
+        });
+
+        // 2. Handle search input
+        searchInput.addEventListener('input', (e) => {
+            const query = e.target.value;
+            clearButton.style.display = query ? 'block' : 'none';
+
+            if (isAutoSearchOn) {
+                // Debounce search to avoid searching on every keystroke
+                clearTimeout(searchTimeout);
+                searchTimeout = setTimeout(() => {
+                    if (query.trim()) {
+                        performSearch(query.trim());
+                    } else {
+                        resultsContainer.innerHTML = '';
+                    }
+                }, 300); // 300ms delay
+            }
+        });
+
+        // 3. Handle clear button click
+        clearButton.addEventListener('click', clearSearch);
+
+        autoButton.addEventListener('click', () => {
+            isAutoSearchOn = !isAutoSearchOn;
+            updateButtons();
+            if (isAutoSearchOn && searchInput.value.trim()) {
+                performSearch(searchInput.value.trim());
+            }
+        });
+
+        searchButton.addEventListener('click', () => {
+            if (searchInput.value.trim()) {
+                performSearch(searchInput.value.trim());
+            }
+        });
+
+        resultsContainer.addEventListener('click', (e) => {
+            if (e.target.classList.contains('recite-button')) {
+                const button = e.target;
+                const surah = button.dataset.surah;
+                const ayah = button.dataset.ayah;
+                playRecitation(surah, ayah, button);
+            }
+        });
+
+        function playRecitation(surah, ayah, button) {
+            if (button.getAttribute('data-playing') === 'true') {
+                if (currentAudio) {
+                    currentAudio.pause();
+                    currentAudio = null;
+                }
+                button.textContent = 'تلاوة';
+                button.removeAttribute('data-playing');
+                return;
+            }
+
+            if (currentAudio) {
+                currentAudio.pause();
+                // Reset previous button text if any
+                const playingButton = document.querySelector('.recite-button[data-playing="true"]');
+                if(playingButton) {
+                    playingButton.textContent = 'تلاوة';
+                    playingButton.removeAttribute('data-playing');
+                }
+            }
+
+            const apiUrl = `https://quranapi.pages.dev/api/${surah}/${ayah}.json`;
+            button.textContent = 'Loading...';
+
+            fetch(apiUrl)
+                .then(response => {
+                    if (!response.ok) {
+                        throw new Error('Network response was not ok');
+                    }
+                    return response.json();
+                })
+                .then(data => {
+                    const misharyAudio = Object.values(data.audio).find(reciter => reciter.reciter === "Mishary Rashid Al Afasy");
+                    if (misharyAudio && misharyAudio.url) {
+                        currentAudio = new Audio(misharyAudio.url);
+                        currentAudio.play();
+                        button.textContent = 'Playing...';
+                        button.setAttribute('data-playing', 'true');
+
+                        currentAudio.onended = () => {
+                            button.textContent = 'تلاوة';
+                            button.removeAttribute('data-playing');
+                            currentAudio = null;
+                        };
+                    } else {
+                        throw new Error('Mishary Rashid Al Afasy audio not found.');
+                    }
+                })
+                .catch(error => {
+                    console.error('Error fetching or playing audio:', error);
+                    button.textContent = 'Error';
+                    // Revert button text after a delay
+                    setTimeout(() => {
+                        button.textContent = 'تلاوة';
+                    }, 2000);
+                });
+        }
+
+        // 4. Perform search (Normalized)
+        function performSearch(query) {
+            if (!quranData) return;
+
+            const normalizedQuery = normalizeArabic(query);
+            const searchResults = [];
+            quranData.data.surahs.forEach(surah => {
+                surah.ayahs.forEach(ayah => {
+                    const normalizedAyahText = normalizeArabic(ayah.text);
+                    if (normalizedAyahText.includes(normalizedQuery)) {
+                        searchResults.push({
+                            surahNumber: surah.number,
+                            surahName: surah.name,
+                            surahEnglishName: surah.englishName,
+                            ayahNumber: ayah.number,
+                            ayahNumberInSurah: ayah.numberInSurah,
+                            ayahText: ayah.text, // Keep original text for display
+                        });
+                    }
+                });
+            });
+
+            renderResults(searchResults, query);
+        }
+
+        // 5. Render results
+        function renderResults(results, query) {
+            resultsContainer.innerHTML = ''; // Clear previous results
+
+            if (results.length === 0) {
+                resultsContainer.innerHTML = `<div class="no-results">No results found for "${query}"</div>`;
+                return;
+            }
+
+            const resultsHeader = document.createElement('div');
+            resultsHeader.className = 'results-header';
+            resultsHeader.textContent = `Results: ${results.length} match${results.length !== 1 ? 'es' : ''}`;
+            resultsContainer.appendChild(resultsHeader);
+
+            results.forEach(result => {
+                const card = document.createElement('div');
+                card.className = 'result-card';
+
+                card.innerHTML = `
+                    <div class="result-card-header">
+                        <div>
+                            <div class="result-card-title">${result.surahEnglishName} (${result.surahName})</div>
+                            <div class="result-card-subtitle">Surah ${result.surahNumber}, Ayah ${result.ayahNumberInSurah}</div>
+                        </div>
+                        <div class="result-card-ayah-number">Ayah ${result.ayahNumber}</div>
+                    </div>
+                    <p class="result-card-text">${result.ayahText}</p>
+                    <button class="recite-button" data-surah="${result.surahNumber}" data-ayah="${result.ayahNumberInSurah}">تلاوة</button>
+                `;
+                resultsContainer.appendChild(card);
+            });
+        }
+    </script>
+
+</body>
+</html>
