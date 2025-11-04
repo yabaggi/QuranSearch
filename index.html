@@ -6,10 +6,30 @@
     <title>Quran Search</title>
     <meta name="theme-color" content="#4338ca">
     <style>
+        :root {
+            --background-color: #f0f4f8;
+            --text-color: #333;
+            --card-background: white;
+            --primary-color: #4338ca;
+            --primary-hover: #3730a3;
+            --highlight-bg: yellow;
+            --highlight-text: black;
+        }
+
+        .dark-mode {
+            --background-color: #121212;
+            --text-color: #e0e0e0;
+            --card-background: #1e1e1e;
+            --primary-color: #7e7eff;
+            --primary-hover: #6b6bf8;
+            --highlight-bg: #ffd700;
+            --highlight-text: black;
+        }
+
         body {
             font-family: sans-serif;
-            background-color: #f0f4f8;
-            color: #333;
+            background-color: var(--background-color);
+            color: var(--text-color);
             margin: 0;
             padding: 2rem;
         }
@@ -26,7 +46,7 @@
             margin-bottom: 0.5rem;
         }
         .search-card, .result-card {
-            background-color: white;
+            background-color: var(--card-background);
             border-radius: 8px;
             box-shadow: 0 4px 6px rgba(0,0,0,0.1);
             margin-bottom: 1.5rem;
@@ -46,6 +66,8 @@
             box-sizing: border-box;
             text-align: right;
             direction: rtl;
+            background-color: var(--background-color);
+            color: var(--text-color);
         }
         .search-controls {
             display: flex;
@@ -59,8 +81,8 @@
             top: 50%;
             transform: translateY(-50%);
             border: none;
-            background: #ddd;
-            color: #555;
+            background: var(--card-background);
+            color: var(--text-color);
             border-radius: 50%;
             width: 2rem;
             height: 2rem;
@@ -72,12 +94,12 @@
             justify-content: center;
         }
         .clear-button:hover {
-            background: #ccc;
+            background: var(--background-color);
         }
         .loader, .no-results {
             text-align: center;
             padding: 2rem;
-            color: #666;
+            color: var(--text-color);
         }
         .results-header {
             font-size: 1.5rem;
@@ -95,12 +117,12 @@
             font-size: 1.2rem;
         }
         .result-card-subtitle {
-            color: #666;
+            color: var(--text-color);
             font-size: 0.9rem;
         }
         .result-card-ayah-number {
-            background-color: #eef2ff;
-            color: #4338ca;
+            background-color: var(--primary-color);
+            color: var(--card-background);
             padding: 0.25rem 0.75rem;
             border-radius: 9999px;
             font-size: 0.9rem;
@@ -113,8 +135,8 @@
             line-height: 1.8;
         }
         .recite-button {
-            background-color: #4338ca;
-            color: white;
+            background-color: var(--primary-color);
+            color: var(--card-background);
             border: none;
             padding: 0.5rem 1rem;
             border-radius: 6px;
@@ -123,7 +145,42 @@
             font-size: 1rem;
         }
         .recite-button:hover {
-            background-color: #3730a3;
+            background-color: var(--primary-hover);
+        }
+        .copy-button {
+            background-color: #10b981; /* A green color */
+            color: white;
+            border: none;
+            padding: 0.75rem 1.5rem;
+            border-radius: 6px;
+            cursor: pointer;
+            font-size: 1rem;
+            font-weight: 600;
+        }
+        .copy-button:hover {
+            background-color: #059669;
+        }
+        .highlight {
+            background-color: var(--highlight-bg);
+            color: var(--highlight-text);
+        }
+
+        .sticky-player {
+            position: fixed;
+            bottom: -100px; /* Start hidden */
+            left: 0;
+            width: 100%;
+            background-color: var(--card-background);
+            box-shadow: 0 -4px 6px rgba(0,0,0,0.1);
+            padding: 1rem;
+            transition: bottom 0.3s ease-in-out;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .sticky-player.visible {
+            bottom: 0;
         }
     </style>
 </head>
@@ -133,6 +190,7 @@
         <div class="header">
             <h1>Quran Search</h1>
             <p>Search for words in the Quran</p>
+            <button id="theme-toggle">Toggle Theme</button>
         </div>
 
         <div class="search-card">
@@ -146,11 +204,23 @@
             </div>
         </div>
 
+        <div id="copy-container" style="text-align: center; margin-bottom: 1rem; display: none;">
+            <button id="copyAllButton" class="copy-button">Copy All</button>
+        </div>
+
         <div id="status">
             <div class="loader">Loading Quran data...</div>
         </div>
 
         <div id="results"></div>
+
+        <div id="sticky-player" class="sticky-player">
+            <div id="player-info"></div>
+            <div id="player-controls">
+                <button id="player-play-pause">Play</button>
+                <input type="range" id="player-progress" value="0" max="100">
+            </div>
+        </div>
     </div>
 
     <script>
@@ -160,6 +230,14 @@
         const clearButton = document.getElementById('clearButton');
         const autoButton = document.getElementById('autoButton');
         const searchButton = document.getElementById('searchButton');
+        const copyContainer = document.getElementById('copy-container');
+        const copyAllButton = document.getElementById('copyAllButton');
+        const themeToggle = document.getElementById('theme-toggle');
+        const body = document.body;
+        const stickyPlayer = document.getElementById('sticky-player');
+        const playerInfo = document.getElementById('player-info');
+        const playerPlayPause = document.getElementById('player-play-pause');
+        const playerProgress = document.getElementById('player-progress');
 
         let quranData = null;
         let searchTimeout = null;
@@ -189,6 +267,7 @@
             searchInput.value = '';
             resultsContainer.innerHTML = '';
             clearButton.style.display = 'none';
+            if (copyContainer) copyContainer.style.display = 'none';
         }
 
         function updateButtons() {
@@ -201,8 +280,21 @@
             }
         }
 
-        // 1. Load Quran data
+        themeToggle.addEventListener('click', () => {
+            body.classList.toggle('dark-mode');
+            if (body.classList.contains('dark-mode')) {
+                localStorage.setItem('theme', 'dark-mode');
+            } else {
+                localStorage.removeItem('theme');
+            }
+        });
+
         document.addEventListener('DOMContentLoaded', () => {
+            const savedTheme = localStorage.getItem('theme');
+            if (savedTheme) {
+                body.classList.add(savedTheme);
+            }
+
             updateButtons();
             fetch('quran.json')
                 .then(response => {
@@ -257,6 +349,10 @@
             }
         });
 
+        if (copyAllButton) {
+            copyAllButton.addEventListener('click', copyAllAyahs);
+        }
+
         resultsContainer.addEventListener('click', (e) => {
             if (e.target.classList.contains('recite-button')) {
                 const button = e.target;
@@ -270,16 +366,12 @@
             if (button.getAttribute('data-playing') === 'true') {
                 if (currentAudio) {
                     currentAudio.pause();
-                    currentAudio = null;
                 }
-                button.textContent = 'تلاوة';
-                button.removeAttribute('data-playing');
                 return;
             }
 
             if (currentAudio) {
                 currentAudio.pause();
-                // Reset previous button text if any
                 const playingButton = document.querySelector('.recite-button[data-playing="true"]');
                 if(playingButton) {
                     playingButton.textContent = 'تلاوة';
@@ -305,10 +397,20 @@
                         button.textContent = 'Playing...';
                         button.setAttribute('data-playing', 'true');
 
+                        stickyPlayer.classList.add('visible');
+                        playerInfo.textContent = `Surah ${surah}, Ayah ${ayah}`;
+                        playerPlayPause.textContent = 'Pause';
+
+                        currentAudio.addEventListener('timeupdate', () => {
+                            const progress = (currentAudio.currentTime / currentAudio.duration) * 100;
+                            playerProgress.value = progress;
+                        });
+
                         currentAudio.onended = () => {
                             button.textContent = 'تلاوة';
                             button.removeAttribute('data-playing');
                             currentAudio = null;
+                            stickyPlayer.classList.remove('visible');
                         };
                     } else {
                         throw new Error('Mishary Rashid Al Afasy audio not found.');
@@ -317,11 +419,65 @@
                 .catch(error => {
                     console.error('Error fetching or playing audio:', error);
                     button.textContent = 'Error';
-                    // Revert button text after a delay
                     setTimeout(() => {
                         button.textContent = 'تلاوة';
                     }, 2000);
                 });
+        }
+
+        playerPlayPause.addEventListener('click', () => {
+            if (currentAudio) {
+                if (currentAudio.paused) {
+                    currentAudio.play();
+                    playerPlayPause.textContent = 'Pause';
+                } else {
+                    currentAudio.pause();
+                    playerPlayPause.textContent = 'Play';
+                }
+            }
+        });
+
+        playerProgress.addEventListener('input', () => {
+            if (currentAudio) {
+                const seekTime = (playerProgress.value / 100) * currentAudio.duration;
+                currentAudio.currentTime = seekTime;
+            }
+        });
+
+        function copyAllAyahs() {
+            const results = document.querySelectorAll('.result-card');
+            if (results.length === 0) return;
+
+            const searchText = searchInput.value;
+            let textToCopy = `وردت عبارة [${searchText}] في القران الكريم في [${results.length}] موقع كما يلي:\n\n`;
+
+            const ayahsText = [];
+            results.forEach((result, index) => {
+                const titleText = result.querySelector('.result-card-title').innerText;
+                const surahArabicName = titleText.substring(titleText.indexOf('(') + 1, titleText.indexOf(')'));
+
+                const subtitleText = result.querySelector('.result-card-subtitle').innerText;
+                const ayahNumber = subtitleText.split('Ayah ')[1];
+
+                const ayahText = result.querySelector('.result-card-text').innerText;
+
+                ayahsText.push(`${index + 1}. ${surahArabicName.replace('سورة ', '')} - الآية رقم: ${ayahNumber} \n${ayahText}`);
+            });
+
+            textToCopy += ayahsText.join('\n\n');
+
+            navigator.clipboard.writeText(textToCopy).then(() => {
+                copyAllButton.textContent = 'Copied!';
+                setTimeout(() => {
+                    copyAllButton.textContent = 'Copy All';
+                }, 2000);
+            }).catch(err => {
+                console.error('Failed to copy: ', err);
+                copyAllButton.textContent = 'Failed to copy';
+                setTimeout(() => {
+                    copyAllButton.textContent = 'Copy All';
+                }, 2000);
+            });
         }
 
         // 4. Perform search (Normalized)
@@ -352,6 +508,7 @@
         // 5. Render results
         function renderResults(results, query) {
             resultsContainer.innerHTML = ''; // Clear previous results
+            if (copyContainer) copyContainer.style.display = 'none';
 
             if (results.length === 0) {
                 resultsContainer.innerHTML = `<div class="no-results">No results found for "${query}"</div>`;
@@ -363,19 +520,24 @@
             resultsHeader.textContent = `Results: ${results.length} match${results.length !== 1 ? 'es' : ''}`;
             resultsContainer.appendChild(resultsHeader);
 
-            results.forEach(result => {
+            if (copyContainer) copyContainer.style.display = 'block';
+
+            results.forEach((result, index) => {
                 const card = document.createElement('div');
                 card.className = 'result-card';
+
+                const originalAyahText = result.ayahText;
+                const highlightedAyahText = originalAyahText.replaceAll(query, `<span class="highlight">${query}</span>`);
 
                 card.innerHTML = `
                     <div class="result-card-header">
                         <div>
-                            <div class="result-card-title">${result.surahEnglishName} (${result.surahName})</div>
+                            <div class="result-card-title">${index + 1}. ${result.surahEnglishName} (${result.surahName.replace('سورة ', '')})</div>
                             <div class="result-card-subtitle">Surah ${result.surahNumber}, Ayah ${result.ayahNumberInSurah}</div>
                         </div>
                         <div class="result-card-ayah-number">Ayah ${result.ayahNumber}</div>
                     </div>
-                    <p class="result-card-text">${result.ayahText}</p>
+                    <p class="result-card-text">${highlightedAyahText}</p>
                     <button class="recite-button" data-surah="${result.surahNumber}" data-ayah="${result.ayahNumberInSurah}">تلاوة</button>
                 `;
                 resultsContainer.appendChild(card);
